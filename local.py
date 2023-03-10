@@ -62,6 +62,10 @@ class Local:
 
 
 def main() -> None:
+    config=dict()
+    config["val_steps"]=10
+    config["local_epochs"]=config["epochs"]=1
+    config["batch_size"]=32
     # Parse command line argument `partition`
     parser = argparse.ArgumentParser(description="Flower")
     parser.add_argument("--partition", type=int, choices=range(0, 2), required=True)
@@ -78,31 +82,28 @@ def main() -> None:
     model.compile(optimizer='adam',
               loss=loss_fn,
               metrics=['accuracy'])
-    (x_train, y_train), (x_test, y_test) = load_partition(args.partition)
+    (x_train, y_train), (x_test, y_test) = load_partition(0,2)
 
-    # Start Flower client
+
     client = Local(model, x_train, y_train, x_test, y_test)
 
-    fl.client.start_numpy_client(
-        server_address="127.0.0.1:8080",
-        client=client
-        )
+   client.evaluate()
 
 
-def load_partition(idx: int):
+def load_partition(sidx: int, eindx:int =sidx+1):
     """Load 1/2 of the training and test data to simulate a partition."""
-    assert idx in range(2)
+    #assert idx in range(2)
     mnist = tf.keras.datasets.mnist
 
     (x_train, y_train), (x_test, y_test) = mnist.load_data()
     x_train, x_test = x_train / 255.0, x_test / 255.0
-    # Use the last 5k training examples as a validation set
+    
     return (
-        x_train[idx * 27500 : (idx + 1) * 27500],
-        y_train[idx * 27500 : (idx + 1) * 27500],
+        x_train[sidx * 27500 : (eidx ) * 27500],
+        y_train[sidx * 27500 : (eidx ) * 27500],
     ), (
-        x_test[idx * 5000 : (idx + 1) * 5000],
-        y_test[idx * 5000 : (idx + 1) * 5000],
+        x_test[sidx * 5000 : (eindx ) * 5000],
+        y_test[sidx * 5000 : (eindx ) * 5000],
     )
 
 
