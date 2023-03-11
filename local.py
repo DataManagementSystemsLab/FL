@@ -16,10 +16,14 @@ class Local:
         self.x_train, self.y_train = x_train, y_train
         self.x_test, self.y_test = x_test, y_test
 
-      def fit(self, parameters, config):
+    def get_parameters(self):
+        return self.model.get_weights()  
+
+    def fit(self, parameters, config):
         """Train parameters on the locally held training set."""
 
         # Update local model parameters
+
         self.model.set_weights(parameters)
 
         # Get hyperparameters for this round
@@ -60,17 +64,27 @@ class Local:
         num_examples_test = len(self.x_test)
         return loss, num_examples_test, {"accuracy": accuracy}
 
+    def validate(self, parameters, config, x_eval, y_eval):
+        """Evaluate parameters on the locally held test set."""
+
+        # Update local model with global parameters
+        self.model.set_weights(parameters)
+
+        # Get config values
+        steps: int = config["val_steps"]
+
+        # Evaluate global model parameters on the local test data and return results
+        loss, accuracy = self.model.evaluate(x_eval, y_eval, 32, steps=steps)
+        num_examples_test = len(x_eval)
+        return loss, num_examples_test, {" validation accuracy": accuracy}
 
 def main() -> None:
     config=dict()
     config["val_steps"]=10
-    config["local_epochs"]=config["epochs"]=1
+    config["local_epochs"]=config["epochs"]=4
     config["batch_size"]=32
     # Parse command line argument `partition`
-    parser = argparse.ArgumentParser(description="Flower")
-    parser.add_argument("--partition", type=int, choices=range(0, 2), required=True)
-    args = parser.parse_args()
-
+   
     # Load and compile Keras model
     model = tf.keras.models.Sequential([
         tf.keras.layers.Flatten(input_shape=(28, 28)),
@@ -82,29 +96,32 @@ def main() -> None:
     model.compile(optimizer='adam',
               loss=loss_fn,
               metrics=['accuracy'])
-    (x_train, y_train), (x_test, y_test) = load_partition(0,2)
-
+    (x_train, y_train), (x_test, y_test),(x_eval,y_eval) = load_data()
+    
 
     client = Local(model, x_train, y_train, x_test, y_test)
+    parameters=client.get_parameters()
+    for i in range(1):
+        parameters,num_examples_train, results=client.fit(parameters,config)
+        loss, num_examples_test, accuracy=client.evaluate(parameters,config)
+        loss, num_examples_test, accuracy=client.validate(parameters,config,x_eval,y_eval)
 
-   client.evaluate()
 
-
-def load_partition(sidx: int, eindx:int =sidx+1):
-    """Load 1/2 of the training and test data to simulate a partition."""
-    #assert idx in range(2)
+def load_data():
     mnist = tf.keras.datasets.mnist
 
     (x_train, y_train), (x_test, y_test) = mnist.load_data()
-    x_train, x_test = x_train / 255.0, x_test / 255.0
+    x_eval=x_train[55000:60000]
+    y_eval=y_train[55000:60000]
+    x_train, x_test,x_eval = x_train / 255.0, x_test / 255.0, x_eval/255.0
     
     return (
-        x_train[sidx * 27500 : (eidx ) * 27500],
-        y_train[sidx * 27500 : (eidx ) * 27500],
+        x_train[0:55000],
+        y_train[0:55000],
     ), (
-        x_test[sidx * 5000 : (eindx ) * 5000],
-        y_test[sidx * 5000 : (eindx ) * 5000],
-    )
+        x_test[0:55000],
+        y_test[0:55000],
+    ), (x_eval, y_eval)
 
 
 if __name__ == "__main__":
